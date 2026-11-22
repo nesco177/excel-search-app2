@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            top: 200px;
+            bottom: 10px;
+            width: 100%;
+            position: fixed;
+            line-height: 1.6;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: transparent;
+        }
+
+        #search {
+            padding: 10px;
+            width: 250px;
+            font-size: 1em;
+            border: 2px solid #4CAF50;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 1em;
+            color: white;
+            background-color: #4CAF50;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        #result {
+            margin-top: 10px;
+            padding: 0px; 
+            width: 80%;
+            max-width: 500px;
+            background-color: transparent;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 1000px;
+            overflow-y: auto; 
+        }
+
+        .result-card {
+            background-color: #edfff5;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 8px;
+            box-shadow: 0 0 8px rgba(0, 0, 0, 0.1);
+            width: 80%;
+            max-width: 400px;
+            text-align: left;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .result-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .result-card p {
+            margin: 8px 0;
+            font-size: 1.1em;
+        }
+
+        .result-card .consumer-no {
+            font-weight: bold;
+            color: #ff0000;
+            font-size: 1.2em;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+
+        .result-card .consumer-no:hover {
+            color: #45a049;
+        }
+
+        #loading {
+            font-size: 1em;
+            margin-top: 10px;
+            color: #000000;
+            display: inline-block;
+        }
+
+        .back-button {
+            padding: 10px 20px;
+            background-color: #333;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Search Box -->
+<input type="text" id="search" placeholder="Enter Postpaid Meter No">
+<button onclick="searchExcel()">Search</button>
+
+<!-- Results Section -->
+<div id="result">
+    <div id="loading" style="display: none;">Loading...</div>
+</div>
+
+<script>
+    const excelURL = "https://raw.githubusercontent.com/nesco177/excel-search-app/main/List.xls"; 
+    let excelData = [];
+
+    
+    function shouldReloadFile() {
+        const lastLoaded = localStorage.getItem('lastLoaded');
+        const currentTime = new Date();
+
+        if (!lastLoaded) {
+            return true; 
+        }
+
+        const lastLoadDate = new Date(lastLoaded);
+        const timeDifference = currentTime - lastLoadDate; 
+        const hoursPassed = timeDifference / (1000 * 60 * 60);
+
+        
+        return hoursPassed >= 24 ;
+    }
+
+    
+    async function loadExcelFile() {
+        const resultDiv = document.getElementById('result');
+        const loadingDiv = document.getElementById('loading');
+        loadingDiv.style.display = 'inline-block';
+
+        try {
+            const response = await fetch(excelURL);
+            if (!response.ok) {
+                throw new Error('Failed to fetch the file. Ensure the URL is correct and publicly accessible.');
+            }
+
+            const arrayBuffer = await response.arrayBuffer();
+            const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
+
+            
+            const sheetName = workbook.SheetNames[0];
+            const sheet = workbook.Sheets[sheetName];
+
+            
+            excelData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+            
+            loadingDiv.style.display = 'none'; 
+            resultDiv.innerHTML = '<p>✅ Ready</p>'; 
+
+            
+            const currentTime = new Date().toISOString();
+            localStorage.setItem('lastLoaded', currentTime);
+
+            
+            localStorage.setItem('excelData', JSON.stringify(excelData));
+
+        } catch (error) {
+            console.error(error);
+            loadingDiv.style.display = 'none'; 
+            resultDiv.innerHTML = '<p>Error loading file. Please check the URL.</p>';
+        }
+    }
+
+    
+    if (shouldReloadFile()) {
+        loadExcelFile(); 
+    } else {
+       
+        const storedData = localStorage.getItem('excelData');
+        if (storedData) {
+            excelData = JSON.parse(storedData);
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<p>✅ File is already loaded for today.</p>';
+        }
+    }
+
+    
+    function searchExcel() {
+        const searchValue = document.getElementById('search').value.trim().toLowerCase();
+        const resultDiv = document.getElementById('result');
+        resultDiv.innerHTML = ''; 
+
+        
+        if (excelData.length === 0) {
+            resultDiv.innerHTML = '<p>Not ready yet. Please wait.</p>';
+            return;
+        }
+
+        
+        if (!searchValue) {
+            resultDiv.innerHTML = '<p>Please enter a valid search term.</p>';
+            return;
+        }
+
+        console.log('Search term:', searchValue); 
+
+        let found = false;
+        for (let i = 1; i < excelData.length; i++) { 
+            const row = excelData[i];
+            const colEValue = (row[4] || "").toString().trim().toLowerCase(); 
+            const colBValue = (row[1] || "").toString().trim().toLowerCase(); 
+            const colOValue = (row[14] || "").toString().trim().toLowerCase(); 
+
+            
+            if (colBValue === searchValue || colOValue === searchValue) {
+                found = true;
+
+                
+                const resultCard = document.createElement('div');
+                resultCard.classList.add('result-card');
+                resultCard.innerHTML = `
+                    <p><span class="consumer-no">${row[1]}</span></p>
+                    <p><strong>Name:</strong> ${row[2]}</p>
+                    <p><strong>Meter No:</strong> ${row[4]}</p>
+                    <p><strong>Book:</strong> ${row[11]}</p>
+                    <p><strong>Account:</strong> ${row[14]}</p>
+                `;
+
+               
+                resultCard.querySelector('.consumer-no').onclick = () => {
+                    copyToClipboardAndRedirect(row[1]);
+                };
+
+                resultDiv.appendChild(resultCard);
+            }
+            
+            else if (colEValue.indexOf(searchValue) !== -1) {
+                found = true;
+
+                
+                const resultCard = document.createElement('div');
+                resultCard.classList.add('result-card');
+                resultCard.innerHTML = `
+                    <p><span class="consumer-no">${row[1]}</span></p>
+                    <p><strong>Name:</strong> ${row[2]}</p>
+                    <p><strong>Meter No:</strong> ${row[4]}</p>
+                    <p><strong>Book:</strong> ${row[11]}</p>
+                    <p><strong>Account:</strong> ${row[14]}</p>
+                `;
+
+                
+                resultCard.querySelector('.consumer-no').onclick = () => {
+                    copyToClipboardAndRedirect(row[1]);
+                };
+
+                resultDiv.appendChild(resultCard);
+            }
+        }
+
+        if (!found) {
+            resultDiv.innerHTML = '<p>No matching record found.</p>';
+        }
+    }
+
+    
+    function copyToClipboardAndRedirect(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text)
+                .then(() => {
+                    window.open("https://management.nesco.gov.bd/postpaid/bill", "_blank");
+                })
+                .catch(() => fallbackCopyAndRedirect(text));
+        } else {
+            fallbackCopyAndRedirect(text);
+        }
+    }
+
+    
+    function fallbackCopyAndRedirect(text) {
+        const tempInput = document.createElement('textarea');
+        tempInput.value = text;
+        tempInput.style.position = 'absolute';
+        tempInput.style.left = '-9999px';
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        document.execCommand('copy');
+        document.body.removeChild(tempInput);
+        window.open("https://management.nesco.gov.bd/postpaid/bill", "_blank");
+    }
+</script>
+
+</body>
+</html>
+
